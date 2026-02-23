@@ -632,4 +632,674 @@ echo "}" >> deps.dot
 dot -Tpng deps.dot -o dependency_graph.png
 echo "Dependency graph generated: dependency_graph.png"
 ```
+Here are 10 more creative and unconventional ways to use Subfinder:
+
+## 33. **Subdomain-Based M&A Target Identification**
+```bash
+# Identify potential acquisition targets through infrastructure overlap
+subfinder -d acquirer.com -silent > acquirer_subs.txt
+
+# Find companies with similar technology stack or infrastructure patterns
+for sector in fintech healthtech saas ecommerce; do
+    crtsh -q "%.$sector.com" 2>/dev/null | while read potential_target; do
+        # Check if they use similar cloud providers
+        if dig +short "$potential_target" | grep -q "$(dig +short acquirer.com | head -1)"; then
+            echo "🔍 INFRASTRUCTURE OVERLAP: $potential_target shares IP space with acquirer"
+        fi
+        
+        # Compare subdomain patterns
+        subfinder -d "$potential_target" -silent > target_subs.txt
+        common_patterns=$(comm -12 <(sort acquirer_subs.txt) <(sort target_subs.txt) | wc -l)
+        
+        if [ $common_patterns -gt 10 ]; then
+            echo "💼 ACQUISITION TARGET: $potential_target shares $common_patterns subdomain patterns"
+        fi
+    done
+done
+```
+
+## 34. **Subdomain-Based Insider Trading Detection**
+```bash
+# Monitor competitor subdomain launches before public announcements
+competitors=("competitor1.com" "competitor2.com" "competitor3.com")
+
+for comp in "${competitors[@]}"; do
+    # Take baseline
+    subfinder -d "$comp" -silent > "baseline_${comp}.txt"
+    
+    # Monitor daily for new subdomains
+    while true; do
+        subfinder -d "$comp" -silent > "current_${comp}.txt"
+        
+        # Detect new subdomains
+        comm -13 "baseline_${comp}.txt" "current_${comp}.txt" | while read new_sub; do
+            # Check for product launch indicators
+            if echo "$new_sub" | grep -E "product|launch|beta|new|app"; then
+                echo "📈 COMPETITOR INTELLIGENCE: $comp launching new service at $new_sub"
+                
+                # Check LinkedIn for hiring related to this product
+                curl -s "https://linkedin.com/company/$comp" | grep -i "product manager|engineer" &&
+                echo "  → Hiring for this product detected"
+            fi
+        done
+        
+        mv "current_${comp}.txt" "baseline_${comp}.txt"
+        sleep 86400  # Check daily
+    done
+done
+```
+
+## 35. **Subdomain-Based Digital Twin Creation**
+```bash
+# Create digital twin of target infrastructure for testing
+subfinder -d production.com -silent | while read sub; do
+    # Map complete infrastructure
+    ip=$(dig +short "$sub" | head -1)
+    server=$(curl -s -I "https://$sub" 2>/dev/null | grep -i "^server:" | cut -d' ' -f2-)
+    
+    # Create Terraform configuration for digital twin
+    cat << EOF >> "digital_twin_${sub}.tf"
+resource "aws_instance" "${sub//./_}" {
+  ami = data.aws_ami.${server// /_}.id
+  instance_type = "t2.micro"
+  tags = {
+    Name = "digital-twin-${sub}"
+    Original = "$sub"
+    IP = "$ip"
+  }
+  
+  user_data = <<-EOF
+    #!/bin/bash
+    echo "Digital twin of $sub" > /etc/motd
+    # Replicate production configuration
+    curl -s https://$sub -o /tmp/production_config
+  EOF
+}
+EOF
+
+    # Create monitoring rules for digital twin
+    cat << EOF >> "prometheus_rules_${sub}.yml"
+groups:
+  - name: digital_twin_${sub}
+    rules:
+      - record: twin:response_time
+        expr: probe_duration_seconds{target="$sub"}
+      - alert: TwinDeviation
+        expr: abs(twin:response_time - probe_duration_seconds{target="digital-twin-$sub"}) > 0.5
+        for: 5m
+        annotations:
+          summary: "Digital twin deviating from production"
+EOF
+done
+```
+
+## 36. **Subdomain-Based Patent Infringement Detection**
+```bash
+# Monitor for potential patent infringement through subdomain patterns
+patented_technologies=("algorithmX" "processY" "methodZ")
+
+for tech in "${patented_technologies[@]}"; do
+    # Search for companies using similar naming patterns
+    crtsh -q "%$tech%.com" 2>/dev/null | while read domain; do
+        subfinder -d "$domain" -silent | while read sub; do
+            # Check if they're using the technology
+            curl -s "https://$sub" 2>/dev/null | grep -i "$tech" && 
+            echo "⚠️ POTENTIAL PATENT INFRINGEMENT: $sub using $tech"
+            
+            # Check job postings for the technology
+            curl -s "https://$domain/careers" 2>/dev/null | grep -i "$tech" &&
+            echo "  → Hiring for $tech at $domain"
+        done
+    done
+done
+```
+
+## 37. **Subdomain-Based Climate Impact Assessment**
+```bash
+# Assess environmental impact of infrastructure
+subfinder -d company.com -silent | while read sub; do
+    ip=$(dig +short "$sub" | head -1)
+    
+    # Get datacenter location
+    location=$(curl -s "http://ip-api.com/json/$ip" | jq -r '.city, .regionName, .country')
+    
+    # Check if datacenter uses renewable energy
+    green_dcs=("Oregon" "Netherlands" "Sweden" "Finland" "California")
+    for green_dc in "${green_dcs[@]}"; do
+        if echo "$location" | grep -q "$green_dc"; then
+            echo "✅ $sub hosted in green datacenter: $location"
+        else
+            # Calculate carbon footprint estimate
+            power_usage=$(curl -s "https://api.eia.gov/datacenter/?ip=$ip" | jq '.power_usage')
+            carbon_intensity=$(curl -s "https://api.electricitymap.org/v3/carbon-intensity/latest?zone=$(curl -s ip-api.com/json/$ip | jq -r '.countryCode')")
+            
+            footprint=$(echo "$power_usage * $carbon_intensity" | bc)
+            echo "🌍 $sub carbon footprint: ${footprint}kg CO2/month"
+        fi
+    done
+done
+```
+
+## 38. **Subdomain-Based Crisis Communication Planning**
+```bash
+# Identify critical communication channels for crisis scenarios
+subfinder -d critical-infra.com -silent | while read sub; do
+    # Classify by criticality
+    if echo "$sub" | grep -E "emergency|alert|notify|status|health"; then
+        criticality="CRITICAL"
+    elif echo "$sub" | grep -E "backup|recovery|failover|dr"; then
+        criticality="HIGH"
+    elif echo "$sub" | grep -E "monitor|metrics|logging"; then
+        criticality="MEDIUM"
+    else
+        criticality="LOW"
+    fi
+    
+    # Test availability from different regions
+    for region in us eu asia sa africa; do
+        region_ip=$(dig +short "$sub" @"${region}.dns.server")
+        if [ ! -z "$region_ip" ]; then
+            echo "$sub: Available in $region"
+        else
+            echo "⚠️ $sub NOT AVAILABLE in $region - crisis comms risk"
+        fi
+    done
+    
+    # Document in crisis plan
+    cat << EOF >> "crisis_communication_plan.md"
+## $sub ($criticality)
+- Primary Purpose: $(echo "$sub" | cut -d'.' -f1)
+- Contact: admin@$sub
+- Fallback: backup-$sub
+- Region Availability: $regions
+- Crisis Protocol: 
+  1. Monitor response time
+  2. Activate failover if latency > 500ms
+  3. Escalate to $(echo "$criticality" | tr '[:upper:]' '[:lower:]') response team
+EOF
+done
+```
+
+## 39. **Subdomain-Based Sentiment Analysis**
+```bash
+# Analyze public sentiment towards different services
+subfinder -d company.com -silent | while read sub; do
+    # Search for mentions on social media
+    twitter_mentions=$(curl -s "https://api.twitter.com/2/tweets/search/recent?query=$sub" \
+        -H "Authorization: Bearer $TWITTER_BEARER_TOKEN" | jq '.meta.result_count')
+    
+    # Check sentiment from reviews
+    trustpilot_score=$(curl -s "https://api.trustpilot.com/v1/business-units/find?name=$sub" \
+        -H "apikey: $TRUSTPILOT_KEY" | jq '.score')
+    
+    # Analyze Reddit discussions
+    reddit_sentiment=$(curl -s "https://www.reddit.com/search.json?q=$sub&limit=100" | 
+        jq '[.data.children[].data.score] | add / length')
+    
+    echo "$sub: Twitter: $twitter_mentions mentions, Trustpilot: $trustpilot_score, Reddit: $reddit_sentiment avg score"
+    
+    # Alert on negative sentiment
+    if [ $reddit_sentiment -lt 0 ]; then
+        echo "⚠️ Negative sentiment detected for $sub - investigate customer issues"
+    fi
+done
+```
+
+## 40. **Subdomain-Based Zero Trust Implementation**
+```bash
+# Map out Zero Trust policy requirements
+subfinder -d company.com -silent | while read sub; do
+    ip=$(dig +short "$sub" | head -1)
+    
+    # Determine resource sensitivity
+    sensitivity="LOW"
+    if echo "$sub" | grep -E "admin|internal|corp|private|secure"; then
+        sensitivity="HIGH"
+    elif echo "$sub" | grep -E "api|data|db|backend"; then
+        sensitivity="MEDIUM"
+    fi
+    
+    # Generate Zero Trust policies
+    cat << EOF >> "zero_trust_policies.json"
+{
+  "resource": "$sub",
+  "ip": "$ip",
+  "sensitivity": "$sensitivity",
+  "policies": {
+    "authentication": "$([ $sensitivity == "HIGH" ] && echo "MFA required" || echo "Basic auth allowed")",
+    "access": [
+      $(if [ $sensitivity == "HIGH" ]; then
+        echo '"allow: vpn_users", "allow: trusted_ips"'
+      else
+        echo '"allow: authenticated_users"'
+      fi)
+    ],
+    "monitoring": {
+      "log_level": "$([ $sensitivity == "HIGH" ] && echo "verbose" || echo "standard")",
+      "alert_on": "$([ $sensitivity == "HIGH" ] && echo "all_access" || echo "failed_attempts")"
+    }
+  }
+}
+EOF
+
+    # Create network segmentation rules
+    if [ $sensitivity == "HIGH" ]; then
+        echo "iptables -A FORWARD -d $ip -m comment --comment \"$sub\" -j LOG" >> firewall_rules.sh
+    fi
+done
+```
+
+## 41. **Subdomain-Based Blockchain/Smart Contract Discovery**
+```bash
+# Discover blockchain-related infrastructure
+subfinder -d crypto-company.com -silent | while read sub; do
+    # Check for blockchain explorers
+    if curl -s "https://$sub/api/v1/network" 2>/dev/null | grep -q "blockchain"; then
+        echo "🔗 Blockchain node detected: $sub"
+        
+        # Try to extract network info
+        chain_id=$(curl -s "https://$sub/api/v1/chain-id" 2>/dev/null)
+        echo "  Chain ID: $chain_id"
+        
+        # Check for smart contracts
+        curl -s "https://$sub/contracts" 2>/dev/null | grep -Eo '0x[a-fA-F0-9]{40}' | while read contract; do
+            echo "  Smart contract found: $contract"
+            
+            # Check if contract is verified
+            verified=$(curl -s "https://api.etherscan.io/api?module=contract&action=getabi&address=$contract" | jq '.status')
+            if [ "$verified" == "1" ]; then
+                echo "    ✅ Verified contract"
+            fi
+        done
+    fi
+    
+    # Check for Web3 endpoints
+    if curl -s -X POST -H "Content-Type: application/json" \
+        -d '{"jsonrpc":"2.0","method":"web3_clientVersion","params":[],"id":1}' \
+        "https://$sub" 2>/dev/null | grep -q "result"; then
+        echo "🪙 Web3 RPC endpoint: $sub"
+    fi
+done
+```
+
+## 42. **Subdomain-Based Predictive Maintenance**
+```bash
+# Predict infrastructure failures based on subdomain patterns
+subfinder -d critical.com -silent | while read sub; do
+    # Collect performance metrics over time
+    for i in {1..30}; do
+        response_time=$(curl -o /dev/null -s -w "%{time_total}\n" "https://$sub")
+        echo "$(date -d "-$i days" +%Y-%m-%d),$response_time" >> "metrics_${sub}.csv"
+    done
+    
+    # Analyze trends
+    avg_response=$(awk -F',' '{sum+=$2} END {print sum/NR}' "metrics_${sub}.csv")
+    recent_avg=$(tail -7 "metrics_${sub}.csv" | awk -F',' '{sum+=$2} END {print sum/NR}')
+    
+    # Predict failures using simple trend analysis
+    if (( $(echo "$recent_avg > $avg_response * 1.5" | bc -l) )); then
+        echo "⚠️ PREDICTIVE ALERT: $sub showing degradation - possible failure in 7-10 days"
+        
+        # Recommend maintenance window
+        echo "  Recommended: Schedule maintenance for $(date -d "+7 days" +%Y-%m-%d)"
+        
+        # Check backup systems
+        backup_sub="backup-${sub}"
+        if host "$backup_sub" &>/dev/null; then
+            backup_ready=$(curl -o /dev/null -s -w "%{http_code}" "https://$backup_sub")
+            if [ "$backup_ready" == "200" ]; then
+                echo "  ✅ Backup system $backup_sub is ready"
+            fi
+        fi
+    fi
+done
+```
+
+Here are 8 more creative and unconventional ways to use Subfinder:
+
+## 43. **Subdomain-Based Quantum Computing Preparedness Audit**
+```bash
+# Assess infrastructure readiness for post-quantum cryptography
+subfinder -d financial.com -silent | while read sub; do
+    echo "🔮 Auditing $sub for quantum resistance..."
+    
+    # Check current encryption algorithms
+    cert_info=$(echo | openssl s_client -connect "$sub:443" 2>/dev/null | openssl x509 -text)
+    
+    # Identify quantum-vulnerable algorithms
+    if echo "$cert_info" | grep -E "RSA|ECDSA|Diffie-Hellman"; then
+        key_size=$(echo "$cert_info" | grep "Public-Key:" | grep -Eo '[0-9]+')
+        
+        # Calculate quantum vulnerability score
+        # Based on estimates of quantum computer capability by 2030
+        if [ $key_size -lt 2048 ]; then
+            q_score=95
+            risk="CRITICAL"
+        elif [ $key_size -lt 3072 ]; then
+            q_score=70
+            risk="HIGH"
+        elif [ $key_size -lt 4096 ]; then
+            q_score=40
+            risk="MEDIUM"
+        else
+            q_score=20
+            risk="LOW"
+        fi
+        
+        echo "$sub: Quantum Vulnerability Score: $q_score/100 ($risk)"
+        
+        # Check for PQC readiness
+        if echo "$cert_info" | grep -E "Dilithium|Falcon|SPHINCS|Kyber"; then
+            echo "  ✅ Post-quantum algorithms detected"
+        else
+            echo "  ⚠️ No post-quantum cryptography detected - upgrade by 2030"
+            # Generate migration ticket
+            cat << EOF >> "pqc_migration_tasks.md"
+## $sub Migration Required
+- Current: RSA-$key_size
+- Risk Level: $risk
+- Deadline: 2030-01-01
+- Recommended: CRYSTALS-Kyber or NIST PQC standards
+EOF
+        fi
+    fi
+done
+```
+
+## 44. **Subdomain-Based Extraterrestrial Communication Monitoring**
+```bash
+# Monitor subdomains for SETI-related activities and space communications
+subfinder -d space-agency.com -silent | while read sub; do
+    # Check for deep space network endpoints
+    if echo "$sub" | grep -E "dsn|deepspace|mars|jupiter|voyager"; then
+        echo "🛸 Deep Space Network endpoint: $sub"
+        
+        # Attempt to detect space communication protocols
+        for port in 4343 4344 12345; do
+            nc -zv -w 2 "$sub" $port 2>/dev/null && 
+            echo "  → Potential DSN port open: $port"
+        done
+        
+        # Check for RF signal data
+        curl -s "https://$sub/telemetry" 2>/dev/null | head -100 | while read data; do
+            if echo "$data" | grep -E "frequency|modulation|bandwidth|SNR"; then
+                echo "  📡 RF Telemetry data accessible: $data"
+            fi
+        done
+    fi
+    
+    # Monitor for exoplanet research systems
+    if curl -s "https://$sub/exoplanet/kepler" 2>/dev/null | grep -q "lightcurve"; then
+        echo "⭐ Exoplanet research detected at $sub"
+        
+        # Extract candidate planet data
+        curl -s "https://$sub/api/candidates" | jq '.[] | {name: .planet_name, confidence: .confidence}' 2>/dev/null
+    fi
+done
+```
+
+## 45. **Subdomain-Based Alternative Reality Game (ARG) Detection**
+```bash
+# Identify potential ARG or viral marketing campaigns
+subfinder -d mysterious.com -silent | while read sub; do
+    # Check for puzzle/game indicators
+    puzzle_score=0
+    
+    # Look for encoded messages in subdomain names
+    if echo "$sub" | grep -E "[0-9]{4}|[a-f0-9]{32}"; then
+        puzzle_score=$((puzzle_score + 20))
+        echo "🧩 Possible encoded subdomain: $sub"
+        
+        # Attempt to decode
+        echo "$sub" | base64 -d 2>/dev/null && echo "  → Base64 decoded content"
+    fi
+    
+    # Check for steganography in images
+    curl -s "https://$sub/image.jpg" -o temp.jpg 2>/dev/null
+    if [ -f temp.jpg ]; then
+        # Check for hidden data in images
+        steghide info temp.jpg 2>/dev/null | grep -q "embedded" && 
+        echo "  🔍 Hidden data detected in image at $sub"
+        rm temp.jpg
+    fi
+    
+    # Look for ARG narrative elements
+    curl -s "https://$sub" | grep -E "riddle|puzzle|mystery|treasure|hunt|clue" && 
+    puzzle_score=$((puzzle_score + 30))
+    
+    if [ $puzzle_score -gt 50 ]; then
+        echo "🎮 ARG DETECTED: $sub with confidence score $puzzle_score"
+        
+        # Create puzzle timeline
+        echo "ARG Investigation Log: $sub" >> arg_investigation.log
+        echo "First seen: $(date)" >> arg_investigation.log
+        echo "Initial clues:" >> arg_investigation.log
+        curl -s "https://$sub" | grep -E "riddle|puzzle|clue" | head -5 >> arg_investigation.log
+    fi
+done
+```
+
+## 46. **Subdomain-Based Oceanographic Research Mapping**
+```bash
+# Discover maritime and oceanographic research infrastructure
+subfinder -d ocean-research.org -silent | while read sub; do
+    # Check for buoy networks
+    if echo "$sub" | grep -E "buoy|float|argo|wave|tide"; then
+        echo "🌊 Ocean monitoring station: $sub"
+        
+        # Try to extract sensor data
+        for endpoint in data telemetry readings sensors; do
+            data=$(curl -s "https://$sub/api/$endpoint" 2>/dev/null)
+            if [ ! -z "$data" ]; then
+                echo "  📊 Sensor data accessible at /api/$endpoint"
+                
+                # Extract oceanographic parameters
+                echo "$data" | grep -E "temperature|salinity|pressure|conductivity|depth" | 
+                while read param; do
+                    echo "    → $param"
+                done
+            fi
+        done
+        
+        # Get geographic location
+        ip=$(dig +short "$sub" | head -1)
+        location=$(curl -s "http://ip-api.com/json/$ip" | jq -r '.lat, .lon')
+        echo "  📍 Position: $location"
+        
+        # Check if it's in international waters
+        # Add to maritime domain awareness map
+        echo "$sub,$location,oceanographic" >> maritime_assets.csv
+    fi
+    
+    # Check for research vessel tracking
+    if curl -s "https://$sub/ais/data" 2>/dev/null | grep -q "MMSI"; then
+        echo "🚢 Vessel tracking system: $sub"
+        curl -s "https://$sub/ais/data" | jq '.[] | {vessel: .name, position: .location}' 2>/dev/null
+    fi
+done
+```
+
+## 47. **Subdomain-Based Dark Pattern Detection**
+```bash
+# Identify subdomains using dark patterns or deceptive design
+subfinder -d ecommerce.com -silent | while read sub; do
+    dark_pattern_score=0
+    html_content=$(curl -s "https://$sub")
+    
+    # Check for hidden subscription traps
+    if echo "$html_content" | grep -E "hidden.*checkbox|opt.*out.*default|pre.?selected"; then
+        dark_pattern_score=$((dark_pattern_score + 25))
+        echo "⚠️ Dark pattern detected at $sub: Hidden subscription"
+    fi
+    
+    # Check for misleading button design
+    if echo "$html_content" | grep -E "cancel.*small|continue.*large|decline.*greyed"; then
+        dark_pattern_score=$((dark_pattern_score + 20))
+        echo "⚠️ Dark pattern at $sub: Misleading button design"
+    fi
+    
+    # Check for fake urgency indicators
+    if echo "$html_content" | grep -E "only.*left|expiring.*now|last.*chance|limited.*time.*fake"; then
+        dark_pattern_score=$((dark_pattern_score + 15))
+        echo "⚠️ Dark pattern at $sub: Fake urgency"
+    fi
+    
+    # Check for forced continuity
+    continuity_check=$(curl -s -X POST -d "unsubscribe=true" "https://$sub/api/cancel" 2>/dev/null)
+    if echo "$continuity_check" | grep -q "requires phone call|can't cancel online"; then
+        dark_pattern_score=$((dark_pattern_score + 30))
+        echo "🚨 Dark pattern at $sub: Forced continuity (can't cancel online)"
+    fi
+    
+    if [ $dark_pattern_score -gt 50 ]; then
+        echo "🔴 CRITICAL: $sub uses extensive dark patterns (Score: $dark_pattern_score)"
+        
+        # Report to dark pattern database
+        curl -X POST -H "Content-Type: application/json" \
+            -d "{\"domain\":\"$sub\",\"score\":$dark_pattern_score,\"patterns\":[\"$(echo $dark_pattern_score | md5sum)\"]}" \
+            "https://darkpatternsi.org/api/report" 2>/dev/null
+    fi
+done
+```
+
+## 48. **Subdomain-Based Microplastic Pollution Tracking**
+```bash
+# Correlate industrial subdomains with environmental pollution data
+subfinder -d manufacturing.com -silent | while read sub; do
+    # Get facility location
+    ip=$(dig +short "$sub" | head -1)
+    location=$(curl -s "http://ip-api.com/json/$ip")
+    lat=$(echo "$location" | jq -r '.lat')
+    lon=$(echo "$location" | jq -r '.lon')
+    
+    # Check against environmental databases
+    # Query global plastic pollution data
+    pollution_data=$(curl -s "https://api.globalplasticwatch.org/v1/measurements?lat=$lat&lon=$lon&radius=10")
+    
+    microplastic_level=$(echo "$pollution_data" | jq '.measurements[0].microplastic_ppm // 0')
+    global_avg=0.5  # Global average microplastic parts per million
+    
+    if (( $(echo "$microplastic_level > $global_avg * 2" | bc -l) )); then
+        echo "🔬 ENVIRONMENTAL ALERT: $sub location shows high microplastic levels"
+        echo "  Location: $lat, $lon"
+        echo "  Microplastic concentration: ${microplastic_level}ppm (Global avg: ${global_avg}ppm)"
+        
+        # Check if facility handles plastics
+        if echo "$sub" | grep -E "plastic|polymer|packaging|synthetic"; then
+            echo "  → Likely contributor: Industrial plastic processing"
+            
+            # Generate environmental report
+            cat << EOF >> "environmental_impact_report.md"
+## $sub Environmental Assessment
+- Location: $lat, $lon
+- Microplastic Level: ${microplastic_level}ppm
+- Status: EXCEEDS GLOBAL AVERAGE
+- Recommendations:
+  1. Install filtration systems
+  2. Review waste management
+  3. Quarterly environmental audit
+EOF
+        fi
+    fi
+done
+```
+
+## 49. **Subdomain-Based Generative AI Training Data Discovery**
+```bash
+# Find subdomains containing valuable AI training data
+subfinder -d research.org -silent | while read sub; do
+    ai_training_score=0
+    data_types=()
+    
+    # Check for datasets
+    for dataset_path in datasets data training-set corpus labeled-data; do
+        if curl -s -I "https://$sub/$dataset_path" 2>/dev/null | grep -q "200"; then
+            ai_training_score=$((ai_training_score + 30))
+            data_types+=("structured_dataset")
+            echo "📊 Dataset found at $sub/$dataset_path"
+            
+            # Index dataset for AI training
+            curl -s "https://$sub/$dataset_path" | head -100 > "dataset_${sub}.sample"
+        fi
+    done
+    
+    # Check for ML model endpoints
+    for model_path in models inference predict api/v1/classify; do
+        if curl -s -X POST -H "Content-Type: application/json" \
+            -d '{"input":"test"}' "https://$sub/$model_path" 2>/dev/null | grep -q "prediction\|output"; then
+            ai_training_score=$((ai_training_score + 40))
+            data_types+=("ml_endpoint")
+            echo "🤖 ML model endpoint: $sub/$model_path"
+        fi
+    done
+    
+    # Check for research papers
+    if curl -s "https://$sub/papers" 2>/dev/null | grep -q "arxiv\|pdf\|research"; then
+        ai_training_score=$((ai_training_score + 20))
+        data_types+=("research_papers")
+        echo "📚 Research papers available at $sub/papers"
+    fi
+    
+    if [ $ai_training_score -gt 50 ]; then
+        echo "🎯 VALUABLE AI TRAINING DATA SOURCE: $sub"
+        echo "  Data types: ${data_types[*]}"
+        echo "  Quality score: $ai_training_score"
+        
+        # Add to AI training corpus index
+        echo "$sub:${data_types[*]}:$ai_training_score" >> ai_training_sources.txt
+    fi
+done
+```
+
+## 50. **Subdomain-Based Nuclear Non-Proliferation Monitoring**
+```bash
+# Monitor for nuclear-related infrastructure and compliance
+subfinder -d energy.gov -silent | while read sub; do
+    # Check for nuclear facility indicators
+    if echo "$sub" | grep -E "reactor|nuclear|uranium|enrichment|centrifuge|plutonium"; then
+        echo "☢️ Nuclear-related subdomain detected: $sub"
+        
+        # Get facility coordinates
+        ip=$(dig +short "$sub" | head -1)
+        location=$(curl -s "http://ip-api.com/json/$ip")
+        lat=$(echo "$location" | jq -r '.lat')
+        lon=$(echo "$location" | jq -r '.lon')
+        
+        # Check IAEA database for registered facilities
+        iaea_check=$(curl -s "https://www.iaea.org/api/facilities?lat=$lat&lon=$lon&radius=5")
+        
+        if echo "$iaea_check" | grep -q "registered"; then
+            echo "  ✅ IAEA-registered facility"
+            facility_type=$(echo "$iaea_check" | jq -r '.facilities[0].type')
+            echo "  Type: $facility_type"
+        else
+            echo "  ⚠️ UNREGISTERED nuclear activity at $lat, $lon"
+            
+            # Generate compliance alert
+            cat << EOF >> "nuclear_compliance_alerts.txt
+UNREGISTERED NUCLEAR FACILITY DETECTED
+Domain: $sub
+Location: $lat, $lon
+Detection Time: $(date)
+Risk Level: HIGH
+Action Required: Notify IAEA for inspection
+EOF"
+            
+            # Check for enrichment indicators
+            for port in 8080 8443 9443; do
+                response=$(curl -s -k "https://$sub:$port/status" 2>/dev/null)
+                if echo "$response" | grep -q "centrifuge\|cascade\|enrichment"; then
+                    echo "  🔴 ENRICHMENT ACTIVITY DETECTED on port $port"
+                fi
+            done
+        fi
+        
+        # Monitor for export control violations
+        curl -s "https://$sub/shipping" 2>/dev/null | grep -E "dual-use|controlled|export license" &&
+        echo "  📦 Potential dual-use exports detected"
+    fi
+done
+```
+
+
 
